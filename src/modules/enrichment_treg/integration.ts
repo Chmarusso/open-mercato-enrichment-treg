@@ -11,7 +11,7 @@ export const integration: IntegrationDefinition = {
   providerKey: 'treg',
   icon: 'sparkles',
   docsUrl: 'https://treg.to/docs',
-  package: '@open-mercato/enrichment-treg',
+  package: 'open-mercato-enrichment-treg',
   version: '0.1.0',
   author: 'Open Mercato Team',
   company: 'Open Mercato',

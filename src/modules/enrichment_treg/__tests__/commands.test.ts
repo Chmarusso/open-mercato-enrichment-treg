@@ -8,6 +8,9 @@ jest.mock('@open-mercato/shared/lib/encryption/find', () => ({
 }))
 jest.mock('../data/entities', () => ({ EnrichmentRecord: class EnrichmentRecord {} }))
 jest.mock('@open-mercato/shared/lib/commands', () => ({ registerCommand: jest.fn() }))
+jest.mock('@open-mercato/core/modules/customers/data/entities', () => ({
+  CustomerCompanyProfile: class CustomerCompanyProfile {},
+}))
 
 const scope = { tenantId: 't1', organizationId: 'o1' }
 
