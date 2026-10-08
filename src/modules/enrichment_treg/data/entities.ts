@@ -1,6 +1,6 @@
 import { OptionalProps } from '@mikro-orm/core'
 import { Entity, Index, PrimaryKey, Property, Unique } from '@mikro-orm/decorators/legacy'
-import type { FailureReason, RecordStatus, SignalKind, SubjectType } from '../lib/constants'
+import type { FailureReason, LookalikeStatus, RecordStatus, SignalKind, SubjectType } from '../lib/constants'
 
 @Entity({ tableName: 'enrichment_treg_records' })
 @Index({
@@ -136,6 +136,91 @@ export class EnrichmentSignal {
 
   @Property({ name: 'dedupe_hash', type: 'text' })
   dedupeHash!: string
+
+  @Property({ name: 'first_seen_at', type: Date })
+  firstSeenAt!: Date
+
+  @Property({ name: 'last_seen_at', type: Date })
+  lastSeenAt!: Date
+
+  @Property({ name: 'created_at', type: Date, onCreate: () => new Date() })
+  createdAt: Date = new Date()
+
+  @Property({ name: 'updated_at', type: Date, onCreate: () => new Date(), onUpdate: () => new Date() })
+  updatedAt: Date = new Date()
+
+  @Property({ name: 'deleted_at', type: Date, nullable: true })
+  deletedAt?: Date | null
+}
+
+@Entity({ tableName: 'enrichment_treg_lookalikes' })
+@Index({
+  name: 'enrichment_treg_lookalikes_list_idx',
+  properties: ['tenantId', 'organizationId', 'seedCompanyId', 'status', 'firstSeenAt'],
+})
+@Unique({
+  name: 'enrichment_treg_lookalikes_dedupe_uq',
+  properties: ['tenantId', 'organizationId', 'seedCompanyId', 'dedupeHash'],
+})
+export class EnrichmentLookalike {
+  [OptionalProps]?: 'status' | 'createdAt' | 'updatedAt' | 'deletedAt'
+
+  @PrimaryKey({ type: 'uuid', defaultRaw: 'gen_random_uuid()' })
+  id!: string
+
+  @Property({ name: 'organization_id', type: 'uuid' })
+  organizationId!: string
+
+  @Property({ name: 'tenant_id', type: 'uuid' })
+  tenantId!: string
+
+  @Property({ name: 'seed_company_id', type: 'uuid' })
+  seedCompanyId!: string
+
+  @Property({ name: 'record_id', type: 'uuid' })
+  recordId!: string
+
+  @Property({ name: 'name', type: 'text' })
+  name!: string
+
+  @Property({ name: 'domain', type: 'text' })
+  domain!: string
+
+  @Property({ name: 'website_url', type: 'text', nullable: true })
+  websiteUrl?: string | null
+
+  @Property({ name: 'industry', type: 'text', nullable: true })
+  industry?: string | null
+
+  @Property({ name: 'description', type: 'text', nullable: true })
+  description?: string | null
+
+  @Property({ name: 'source', type: 'text', nullable: true })
+  source?: string | null
+
+  @Property({ name: 'payload', type: 'jsonb' })
+  payload!: Record<string, unknown>
+
+  @Property({ name: 'dedupe_hash', type: 'text' })
+  dedupeHash!: string
+
+  @Property({ name: 'status', type: 'text', default: 'new' })
+  status: LookalikeStatus = 'new'
+
+  @Property({ name: 'crm_company_id', type: 'uuid', nullable: true })
+  crmCompanyId?: string | null
+
+  @Property({ name: 'imported_at', type: Date, nullable: true })
+  importedAt?: Date | null
+
+  @Property({ name: 'imported_by_user_id', type: 'uuid', nullable: true })
+  importedByUserId?: string | null
+
+  @Property({ name: 'dismissed_at', type: Date, nullable: true })
+  dismissedAt?: Date | null
+
+  @Property({ name: 'dismissed_by_user_id', type: 'uuid', nullable: true })
+  dismissedByUserId?: string | null
 
   @Property({ name: 'first_seen_at', type: Date })
   firstSeenAt!: Date

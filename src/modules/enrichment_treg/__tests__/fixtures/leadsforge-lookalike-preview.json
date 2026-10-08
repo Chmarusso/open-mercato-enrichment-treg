@@ -1,0 +1,37 @@
+{
+  "companies": [
+    {
+      "domain": "attio.com",
+      "name": "Attio",
+      "website": "https://attio.com",
+      "industry": "Software",
+      "keywords": ["customer relationship management", "revenue operations", "sales pipeline management"],
+      "description": "Attio provides a customer relationship management platform for revenue teams."
+    },
+    {
+      "domain": "insightly.com",
+      "name": "Insightly",
+      "website": "https://insightly.com",
+      "industry": "Software",
+      "keywords": ["crm", "marketing automation"],
+      "description": "Insightly offers CRM, marketing automation and customer service software."
+    },
+    {
+      "domain": "capsulecrm.com",
+      "name": "Capsule",
+      "website": "https://capsulecrm.com",
+      "industry": "Software",
+      "keywords": ["crm", "small business"],
+      "description": "Capsule is a CRM for small and growing businesses."
+    },
+    {
+      "domain": "close.com",
+      "name": "Close",
+      "website": "https://close.com",
+      "industry": "Software",
+      "keywords": ["sales crm", "calling"],
+      "description": "Close is a CRM built for inside sales teams."
+    }
+  ],
+  "totalCount": 54000
+}

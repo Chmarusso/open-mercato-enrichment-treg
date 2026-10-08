@@ -1,5 +1,12 @@
 import { z } from 'zod'
-import { COMPANY_PROPOSAL_FIELDS, PERSON_PROPOSAL_FIELDS, RECORD_STATUSES, SIGNAL_KINDS, SUBJECT_TYPES } from '../lib/constants'
+import {
+  COMPANY_PROPOSAL_FIELDS,
+  LOOKALIKE_STATUSES,
+  PERSON_PROPOSAL_FIELDS,
+  RECORD_STATUSES,
+  SIGNAL_KINDS,
+  SUBJECT_TYPES,
+} from '../lib/constants'
 
 export const enrichRequestSchema = z.object({
   subjectType: z.enum(SUBJECT_TYPES),
@@ -72,4 +79,46 @@ export const enrichmentSignalSchema = z.object({
   source: z.string().nullable(),
   firstSeenAt: z.string(),
   lastSeenAt: z.string(),
+})
+
+export const lookalikesRefreshSchema = z.object({
+  companyId: z.string().uuid(),
+})
+export type LookalikesRefreshRequest = z.infer<typeof lookalikesRefreshSchema>
+
+const idListSchema = z
+  .string()
+  .transform((value) => value.split(',').map((id) => id.trim()).filter((id) => id.length > 0))
+  .pipe(z.array(z.string().uuid()).max(100))
+
+export const lookalikesQuerySchema = z.object({
+  companyId: z.string().uuid(),
+  status: z.enum(LOOKALIKE_STATUSES).optional(),
+  ids: idListSchema.optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(50),
+})
+export type LookalikesQuery = z.infer<typeof lookalikesQuerySchema>
+
+export const markLookalikeImportedSchema = z.object({
+  companyId: z.string().uuid(),
+})
+export type MarkLookalikeImportedRequest = z.infer<typeof markLookalikeImportedSchema>
+
+export const enrichmentLookalikeSchema = z.object({
+  id: z.string().uuid(),
+  seedCompanyId: z.string().uuid(),
+  name: z.string(),
+  domain: z.string(),
+  websiteUrl: z.string().nullable(),
+  industry: z.string().nullable(),
+  description: z.string().nullable(),
+  source: z.string().nullable(),
+  status: z.enum(LOOKALIKE_STATUSES),
+  crmCompanyId: z.string().nullable(),
+  importedAt: z.string().nullable(),
+  dismissedAt: z.string().nullable(),
+  firstSeenAt: z.string(),
+  lastSeenAt: z.string(),
+  updatedAt: z.string(),
 })

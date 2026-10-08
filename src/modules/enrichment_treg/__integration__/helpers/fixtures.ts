@@ -145,3 +145,46 @@ export async function waitForRecord(
     .not.toMatch(/^(missing|pending|running)$/)
   return latest as unknown as EnrichmentRecordBody
 }
+
+export type LookalikeBody = {
+  id: string
+  name: string
+  domain: string
+  status: string
+  crmCompanyId: string | null
+  updatedAt: string
+}
+
+export type LookalikesBody = {
+  items: LookalikeBody[]
+  total: number
+  latest: EnrichmentRecordBody | null
+  canImport: boolean
+}
+
+export async function listLookalikes(request: APIRequestContext, token: string, companyId: string): Promise<LookalikesBody> {
+  const response = await apiRequest(request, 'GET', `/api/enrichment_treg/lookalikes?companyId=${companyId}&pageSize=100`, { token })
+  expect(response.ok(), 'list lookalikes').toBeTruthy()
+  return (await readJson(response)) as unknown as LookalikesBody
+}
+
+export async function waitForLookalikeLookup(
+  request: APIRequestContext,
+  token: string,
+  companyId: string,
+  previousRecordId: string | null = null,
+): Promise<LookalikesBody> {
+  let latest: LookalikesBody | null = null
+  await expect
+    .poll(
+      async () => {
+        latest = await listLookalikes(request, token, companyId)
+        const record = latest.latest
+        if (!record || record.id === previousRecordId) return 'missing'
+        return record.status
+      },
+      { timeout: 170_000, intervals: [1000, 2000] },
+    )
+    .not.toMatch(/^(missing|pending|running)$/)
+  return latest as unknown as LookalikesBody
+}

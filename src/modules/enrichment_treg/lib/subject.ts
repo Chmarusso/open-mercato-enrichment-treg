@@ -76,3 +76,14 @@ export async function loadSubjectIdentity(
     companyDomain,
   })
 }
+
+export async function companyExists(em: EntityManager, companyId: string, scope: Scope): Promise<boolean> {
+  const count = await em.count(CustomerEntity, {
+    id: companyId,
+    kind: 'company',
+    tenantId: scope.tenantId,
+    organizationId: scope.organizationId,
+    deletedAt: null,
+  })
+  return count > 0
+}

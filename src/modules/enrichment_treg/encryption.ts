@@ -18,6 +18,17 @@ export const defaultEncryptionMaps: ModuleEncryptionMap[] = [
       { field: 'payload' },
     ],
   },
+  {
+    entityId: 'enrichment_treg:enrichment_lookalike',
+    fields: [
+      { field: 'name' },
+      { field: 'domain' },
+      { field: 'website_url' },
+      { field: 'industry' },
+      { field: 'description' },
+      { field: 'payload' },
+    ],
+  },
 ]
 
 export default defaultEncryptionMaps

@@ -148,6 +148,7 @@ export async function callTregEndpoint(params: {
   body: Record<string, unknown>
   missWhenEmpty: string
   missOnNotFound?: boolean
+  direct?: boolean
   idempotencyKey: string
   meta?: Record<string, string>
   fetchImpl?: FetchLike
@@ -188,10 +189,12 @@ export async function callTregEndpoint(params: {
     )
   }
 
-  const output = isRecord(payload) && isRecord(payload.output) ? payload.output : null
-  const raw = isRecord(payload) && 'raw' in payload ? payload.raw : payload
+  const output = params.direct
+    ? isRecord(payload) ? payload : null
+    : isRecord(payload) && isRecord(payload.output) ? payload.output : null
+  const raw = !params.direct && isRecord(payload) && 'raw' in payload ? payload.raw : payload
   const tregInfo = isRecord(payload) && isRecord(payload._treg) ? payload._treg : null
-  const servedBy = meta.servedBy ?? readString(tregInfo?.served_by)
+  const servedBy = meta.servedBy ?? readString(tregInfo?.served_by) ?? (params.direct ? endpointId : null)
   if (!output || !hasValue(output[params.missWhenEmpty])) {
     return { status: 'miss', raw, ...meta, servedBy }
   }

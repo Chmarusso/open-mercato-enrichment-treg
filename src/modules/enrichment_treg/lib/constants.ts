@@ -51,3 +51,11 @@ export function signalKindForEndpoint(endpointId: string): SignalKind | null {
   const match = SIGNAL_KINDS.find((kind) => SIGNAL_ENDPOINT_BY_KIND[kind] === endpointId)
   return match ?? null
 }
+
+export const LOOKALIKE_ENDPOINT = 'leadsforge.companies.lookalike.preview'
+export const LOOKALIKE_LIST_KEY = 'companies'
+export const LOOKALIKES_DEFAULT_LIMIT = 25
+export const LOOKALIKES_MATCH_SCAN_MAX = 20_000
+
+export const LOOKALIKE_STATUSES = ['new', 'in_crm', 'imported', 'dismissed'] as const
+export type LookalikeStatus = (typeof LOOKALIKE_STATUSES)[number]

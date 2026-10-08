@@ -1,11 +1,14 @@
 import type { EntityManager } from '@mikro-orm/postgresql'
 import { findOneWithDecryption, findWithDecryption } from '@open-mercato/shared/lib/encryption/find'
 import { createLogger } from '@open-mercato/shared/lib/logger'
-import { EnrichmentRecord, EnrichmentSignal } from '../data/entities'
+import { EnrichmentLookalike, EnrichmentRecord, EnrichmentSignal } from '../data/entities'
 import { emitEnrichmentTregEvent } from '../events'
 import { callTregEndpoint, parseTregSettings, TregError, type FetchLike } from './client'
 import {
   ENDPOINT_BY_SUBJECT,
+  LOOKALIKE_ENDPOINT,
+  LOOKALIKE_LIST_KEY,
+  LOOKALIKES_MATCH_SCAN_MAX,
   SIGNAL_LIST_KEY_BY_KIND,
   signalKindForEndpoint,
   TREG_INTEGRATION_ID,
@@ -14,6 +17,13 @@ import {
 } from './constants'
 import { normalizeOutput, type SubjectIdentity } from './normalize'
 import { normalizeSignals, type NormalizedSignal } from './signals'
+import {
+  applyCrmMatch,
+  loadCrmDomainIndex,
+  normalizeLookalikes,
+  readSeedDomain,
+  type NormalizedLookalike,
+} from './lookalikes'
 
 const logger = createLogger('enrichment_treg').child({ component: 'enrichment-service' })
 
@@ -151,6 +161,80 @@ export async function storeSignals(
   return newCount
 }
 
+export type StoredLookalikesSummary = {
+  newCount: number
+  totalCount: number
+  skippedRows: number
+  crmMatchSkipped: boolean
+}
+
+export async function storeLookalikes(
+  em: EntityManager,
+  record: EnrichmentRecord,
+  lookalikes: NormalizedLookalike[],
+  now: Date,
+): Promise<EnrichmentLookalike[]> {
+  if (lookalikes.length === 0) return []
+  const scope = { tenantId: record.tenantId, organizationId: record.organizationId }
+  const existing = await findWithDecryption(
+    em,
+    EnrichmentLookalike,
+    {
+      ...scope,
+      seedCompanyId: record.subjectId,
+      dedupeHash: { $in: lookalikes.map((lookalike) => lookalike.dedupeHash) },
+      deletedAt: null,
+    },
+    undefined,
+    scope,
+  )
+  const byHash = new Map(existing.map((lookalike) => [lookalike.dedupeHash, lookalike]))
+  const created: EnrichmentLookalike[] = []
+  for (const lookalike of lookalikes) {
+    const known = byHash.get(lookalike.dedupeHash)
+    if (known) {
+      known.lastSeenAt = now
+      continue
+    }
+    created.push(
+      em.create(EnrichmentLookalike, {
+        ...scope,
+        seedCompanyId: record.subjectId,
+        recordId: record.id,
+        name: lookalike.name,
+        domain: lookalike.domain,
+        websiteUrl: lookalike.websiteUrl,
+        industry: lookalike.industry,
+        description: lookalike.description,
+        source: record.servedBy ?? null,
+        payload: lookalike.payload,
+        dedupeHash: lookalike.dedupeHash,
+        firstSeenAt: now,
+        lastSeenAt: now,
+      }),
+    )
+  }
+  return created
+}
+
+async function matchNewLookalikes(
+  em: EntityManager,
+  record: EnrichmentRecord,
+  created: EnrichmentLookalike[],
+): Promise<boolean> {
+  if (created.length === 0) return false
+  const scope = { tenantId: record.tenantId, organizationId: record.organizationId }
+  try {
+    const index = await loadCrmDomainIndex(em, scope, LOOKALIKES_MATCH_SCAN_MAX)
+    if (!index) return true
+    applyCrmMatch(created, index, record.subjectId)
+    return false
+  } catch (err) {
+    logger.warn('Failed to match lookalikes against CRM companies', { err, recordId: record.id })
+    return true
+  }
+}
+
 async function emitSignalsDetected(record: EnrichmentRecord, signalType: SignalKind, newCount: number): Promise<void> {
   if (newCount === 0) return
   try {
@@ -194,6 +278,7 @@ export async function runEnrichment(params: {
   let failureStatus: number | null = null
   let newSignals = 0
   const signalKind = signalKindForEndpoint(record.endpointId)
+  const isLookalike = record.endpointId === LOOKALIKE_ENDPOINT
 
   try {
     const settings = parseTregSettings(await params.credentialsService.resolve(TREG_INTEGRATION_ID, scope))
@@ -201,10 +286,16 @@ export async function runEnrichment(params: {
       settings,
       endpointId: record.endpointId,
       body: record.identity,
-      missWhenEmpty: signalKind ? SIGNAL_LIST_KEY_BY_KIND[signalKind] : MISS_KEY_BY_SUBJECT[record.subjectType],
+      missWhenEmpty: isLookalike
+        ? LOOKALIKE_LIST_KEY
+        : signalKind ? SIGNAL_LIST_KEY_BY_KIND[signalKind] : MISS_KEY_BY_SUBJECT[record.subjectType],
       missOnNotFound: signalKind !== null,
+      direct: isLookalike,
       idempotencyKey: `om-enrichment-${record.id}`,
-      meta: { tenant: scope.tenantId, subject: signalKind ? `${record.subjectType}-${signalKind}` : record.subjectType },
+      meta: {
+        tenant: scope.tenantId,
+        subject: isLookalike ? 'company-lookalikes' : signalKind ? `${record.subjectType}-${signalKind}` : record.subjectType,
+      },
       fetchImpl: params.fetchImpl,
     })
     record.servedBy = result.servedBy
@@ -213,7 +304,19 @@ export async function runEnrichment(params: {
     record.rawPayload = result.raw ?? null
     const fetchedAt = new Date()
     record.fetchedAt = fetchedAt
-    if (result.status === 'hit' && signalKind) {
+    if (result.status === 'hit' && isLookalike) {
+      const normalized = normalizeLookalikes({ output: result.output, seedDomain: readSeedDomain(record.identity) })
+      const created = await storeLookalikes(em, record, normalized.lookalikes, fetchedAt)
+      const crmMatchSkipped = await matchNewLookalikes(em, record, created)
+      const summary: StoredLookalikesSummary = {
+        newCount: created.length,
+        totalCount: normalized.lookalikes.length,
+        skippedRows: normalized.skippedRows,
+        crmMatchSkipped,
+      }
+      record.summary = summary
+      record.status = normalized.lookalikes.length > 0 ? 'completed' : 'no_match'
+    } else if (result.status === 'hit' && signalKind) {
       const normalized = normalizeSignals({ kind: signalKind, output: result.output, raw: result.raw })
       newSignals = await storeSignals(em, record, normalized.signals, fetchedAt)
       const summary: StoredSignalsSummary = {

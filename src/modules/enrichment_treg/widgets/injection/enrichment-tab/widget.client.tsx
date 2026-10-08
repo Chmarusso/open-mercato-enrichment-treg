@@ -17,6 +17,7 @@ import { Checkbox } from '@open-mercato/ui/primitives/checkbox'
 import { StatusBadge, type StatusBadgeVariant } from '@open-mercato/ui/primitives/status-badge'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@open-mercato/ui/primitives/table'
 import SignalsSection from '../../../components/SignalsSection'
+import SimilarCompaniesSection from '../../../components/SimilarCompaniesSection'
 
 type SubjectType = 'person' | 'company'
 
@@ -101,6 +102,7 @@ export default function EnrichmentTabWidget(props: InjectionWidgetComponentProps
     <div className="space-y-6">
       <ProfileEnrichment {...props} />
       <SignalsSection companyId={subjectId} context={props.context ?? {}} />
+      <SimilarCompaniesSection companyId={subjectId} context={props.context ?? {}} />
     </div>
   )
 }

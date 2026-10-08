@@ -110,6 +110,23 @@ describe('callTregEndpoint', () => {
     expect((await call([])).status).toBe('miss')
   })
 
+  it('reads an unwrapped body from direct endpoints and names the endpoint as provider', async () => {
+    const call = (companies: unknown[]) =>
+      callTregEndpoint({
+        settings,
+        endpointId: 'leadsforge.companies.lookalike.preview',
+        body: { domains: ['acme.com'] },
+        missWhenEmpty: 'companies',
+        direct: true,
+        idempotencyKey: 'k',
+        fetchImpl: async () => jsonResponse(200, { companies, totalCount: companies.length }, { 'x-treg-cost-micro': '0' }),
+      })
+    const hit = await call([{ domain: 'attio.com', name: 'Attio' }])
+    expect(hit).toMatchObject({ status: 'hit', servedBy: 'leadsforge.companies.lookalike.preview', costMicro: 0 })
+    expect(hit.status === 'hit' ? hit.output.companies : null).toEqual([{ domain: 'attio.com', name: 'Attio' }])
+    expect((await call([])).status).toBe('miss')
+  })
+
   it('reports a 404 as an uncharged miss only when asked to', async () => {
     const fetchImpl: FetchLike = async () =>
       jsonResponse(404, { detail: { error: 'route_caller_fault', charged_micro: 0 } }, { 'x-treg-cost-micro': '0' })

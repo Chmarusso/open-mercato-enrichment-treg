@@ -12,6 +12,10 @@ jest.mock('@open-mercato/shared/lib/encryption/find', () => ({
 jest.mock('../data/entities', () => ({
   EnrichmentRecord: class EnrichmentRecord {},
   EnrichmentSignal: class EnrichmentSignal {},
+  EnrichmentLookalike: class EnrichmentLookalike {},
+}))
+jest.mock('@open-mercato/core/modules/customers/data/entities', () => ({
+  CustomerCompanyProfile: class CustomerCompanyProfile {},
 }))
 jest.mock('../events', () => ({
   emitEnrichmentTregEvent: jest.fn(async () => undefined),
@@ -227,5 +231,77 @@ describe('runEnrichment for company signals', () => {
     expect(record.costMicro).toBe(0)
     expect(deps.errorLog).not.toHaveBeenCalled()
     expect(emitEnrichmentTregEvent).not.toHaveBeenCalledWith('enrichment_treg.signal.detected', expect.anything())
+  })
+
+  describe('similar companies', () => {
+    function lookalikeSetup(response: () => Promise<Response>, crmProfiles: unknown[], profileCount = crmProfiles.length) {
+      const record = makeRecord({
+        subjectType: 'company',
+        subjectId: 'seed-1',
+        endpointId: 'leadsforge.companies.lookalike.preview',
+        identity: { domains: ['pipedrive.com'] },
+      })
+      const deps = setup(record, response)
+      const created: Array<Record<string, unknown>> = []
+      const em = {
+        flush: deps.flush,
+        count: jest.fn(async () => profileCount),
+        create: jest.fn((_entity: unknown, data: Record<string, unknown>) => {
+          const row = { status: 'new', crmCompanyId: null, ...data }
+          created.push(row)
+          return row
+        }),
+      } as unknown as EntityManager
+      const existing = { dedupeHash: '', lastSeenAt: new Date(0) }
+      return { record, deps: { ...deps, em }, created, existing, crmProfiles }
+    }
+
+    it('stores new lookalikes, marks the ones already in the CRM and keeps known rows', async () => {
+      const ctx = lookalikeSetup(
+        () => json(200, { companies: [
+          { domain: 'attio.com', name: 'Attio', website: 'https://attio.com' },
+          { domain: 'close.com', name: 'Close' },
+          { domain: 'pipedrive.com', name: 'Pipedrive' },
+          { name: 'Nameless domain' },
+        ], totalCount: 3 }),
+        [{ entity: { id: 'crm-close' }, domain: 'close.com', websiteUrl: null }],
+      )
+      const { computeLookalikeDedupeHash } = jest.requireActual('../lib/lookalikes') as typeof import('../lib/lookalikes')
+      ctx.existing.dedupeHash = computeLookalikeDedupeHash('attio.com')
+      ;(findWithDecryption as jest.Mock)
+        .mockResolvedValueOnce([ctx.existing])
+        .mockResolvedValueOnce(ctx.crmProfiles)
+
+      await runEnrichment({ ...ctx.deps, recordId: ctx.record.id, scope, now: () => now })
+
+      expect(ctx.record.status).toBe('completed')
+      expect(ctx.record.servedBy).toBe('leadsforge.companies.lookalike.preview')
+      expect(ctx.record.summary).toEqual({ newCount: 1, totalCount: 2, skippedRows: 1, crmMatchSkipped: false })
+      expect(ctx.existing.lastSeenAt).not.toEqual(new Date(0))
+      expect(ctx.created).toEqual([
+        expect.objectContaining({ seedCompanyId: 'seed-1', domain: 'close.com', status: 'in_crm', crmCompanyId: 'crm-close', recordId: 'rec-1' }),
+      ])
+      expect(JSON.parse(String(ctx.deps.fetchImpl.mock.calls[0][1]?.body))).toEqual({ domains: ['pipedrive.com'] })
+      expect(ctx.deps.fetchImpl.mock.calls[0][0]).toContain('/call/leadsforge.companies.lookalike.preview')
+    })
+
+    it('skips the CRM match above the scan cap and says so in the summary', async () => {
+      const ctx = lookalikeSetup(() => json(200, { companies: [{ domain: 'attio.com', name: 'Attio' }] }), [], 50_000)
+      ;(findWithDecryption as jest.Mock).mockResolvedValueOnce([])
+
+      await runEnrichment({ ...ctx.deps, recordId: ctx.record.id, scope, now: () => now })
+
+      expect(ctx.record.summary).toMatchObject({ newCount: 1, crmMatchSkipped: true })
+      expect(ctx.created[0]).toMatchObject({ status: 'new', crmCompanyId: null })
+    })
+
+    it('marks an empty list as no_match', async () => {
+      const ctx = lookalikeSetup(() => json(200, { companies: [], totalCount: 0 }), [])
+
+      await runEnrichment({ ...ctx.deps, recordId: ctx.record.id, scope, now: () => now })
+
+      expect(ctx.record.status).toBe('no_match')
+      expect(ctx.created).toHaveLength(0)
+    })
   })
 })

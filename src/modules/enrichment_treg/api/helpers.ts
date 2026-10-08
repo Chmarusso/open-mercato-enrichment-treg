@@ -90,6 +90,14 @@ export async function ensureSubjectAccess(scope: RequestScope, subjectType: Subj
   return allowed ? null : jsonError(403, 'forbidden')
 }
 
+export async function hasFeatures(scope: RequestScope, features: string[]): Promise<boolean> {
+  const rbacService = scope.container.resolve<RbacService>('rbacService')
+  return rbacService.userHasAllFeatures(scope.userId, features, {
+    tenantId: scope.tenantId,
+    organizationId: scope.organizationId,
+  })
+}
+
 export function resolveCommandBus(scope: RequestScope): CommandBus {
   return scope.container.resolve<CommandBus>('commandBus')
 }
@@ -107,6 +115,7 @@ type GuardRequest = {
   resourceId: string | null
   operation: 'create' | 'update'
   payload: Record<string, unknown>
+  resourceKind?: string
 }
 
 export async function runWriteGuards(input: GuardRequest): Promise<
@@ -120,7 +129,7 @@ export async function runWriteGuards(input: GuardRequest): Promise<
       tenantId: input.scope.tenantId,
       organizationId: input.scope.organizationId,
       userId: input.scope.userId,
-      resourceKind: 'enrichment_treg.record',
+      resourceKind: input.resourceKind ?? 'enrichment_treg.record',
       resourceId: input.resourceId,
       operation: input.operation,
       requestMethod: input.req.method,
@@ -153,7 +162,7 @@ export async function runGuardAfterSuccess(
         tenantId: input.scope.tenantId,
         organizationId: input.scope.organizationId,
         userId: input.scope.userId,
-        resourceKind: 'enrichment_treg.record',
+        resourceKind: input.resourceKind ?? 'enrichment_treg.record',
         resourceId: input.resourceId,
         operation: input.operation,
         requestMethod: input.req.method,
